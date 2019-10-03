@@ -5,7 +5,7 @@
         </encoder>
     </appender>
 
-    <logger level="DEBUG" name="entities-lookup"/>
+    <logger level="INFO" name="entities-lookup"/>
 
     <!-- Default root logger -->
     <root level="INFO">

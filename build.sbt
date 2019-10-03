@@ -63,7 +63,7 @@ lazy val `entities-lookup` = (project in file("."))
       "org.dispatchhttp"              %% "dispatch-core"            % "1.1.0",
       "com.typesafe.play"             %% "play-json"                % "2.7.3",
       "com.typesafe.akka"             %% "akka-stream"              % "2.5.25",
-      "com.lightbend.akka"            %% "akka-stream-alpakka-csv"  % "1.1.1",
+      "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "1.1.1",
       "com.gilt"                      %% "gfc-time"                 % "0.0.7",
       "ch.qos.logback"                %  "logback-classic"          % "1.2.3",
       "org.scalacheck"                %% "scalacheck"               % "1.14.0"      % Test,

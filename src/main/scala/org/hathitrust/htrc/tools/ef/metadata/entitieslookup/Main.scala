@@ -5,8 +5,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.alpakka.csv.scaladsl.CsvParsing
-import akka.stream.scaladsl.FileIO
+import akka.stream.scaladsl.{FileIO, JsonFraming}
 import akka.util.ByteString
 import com.gilt.gfc.time.Timer
 import dispatch._
@@ -18,6 +17,7 @@ import io.netty.util.{HashedWheelTimer, Timer => NettyTimer}
 
 import scala.concurrent.ExecutionContext
 import scala.language.reflectiveCalls
+import scala.util.{Failure, Success, Try}
 
 object Main {
   val appName: String = "entities-lookup"
@@ -38,7 +38,7 @@ object Main {
     implicit val http: Http = Http.withConfiguration { _
       .setFollowRedirect(true)
     }
-    implicit val timer: NettyTimer = new HashedWheelTimer()
+    implicit val timer: NettyTimer = new HashedWheelTimer(100, TimeUnit.MILLISECONDS, 8192)
 
     logger.info("Starting...")
 
@@ -46,17 +46,27 @@ object Main {
     val t0 = System.nanoTime()
 
     val done = FileIO.fromPath(Paths.get(inputPath))
-      .via(CsvParsing.lineScanner())
-      .map(_.map(_.utf8String))
-      .map(Entity(_))
+      .via(JsonFraming.objectScanner(Int.MaxValue))
+      .map(_.utf8String)
+      .map { s =>
+        val entityTry = Try(Json.parse(s).as[Entity])
+        entityTry match {
+          case Failure(e) => logger.error(s, e)
+          case _ =>
+        }
+        entityTry
+      }
+      .collect {
+        case Success(entity) => entity
+      }
       .filterNot {
         case Entity(WorldCat, url, _, _) if url.startsWith("_") => true
         case _ => false
       }
       .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity).map(entity -> _))
       .map {
-        case (Entity(t, l, r, _), Right(value)) => EntityResult(t, l, r, value = value)
-        case (Entity(t, l, r, _), Left(e)) => EntityResult(t, l, r, error = Some(e.getMessage))
+        case (Entity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
+        case (Entity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
       }
       .map(er => ByteString(Json.toJsObject(er).toString() + "\n"))
       .runWith(FileIO.toPath(outputPath.toPath))

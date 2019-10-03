@@ -23,7 +23,7 @@ object Helper {
                     (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val req = url(s"$worldCatId.jsonld")
 
-    retry.Backoff(max = 10) { () =>
+    retry.Backoff(max = 7) { () =>
       if (logger.isTraceEnabled)
         logger.trace(req.toRequest.getUri.toString)
 
@@ -31,9 +31,14 @@ object Helper {
         .either
         .right
         .map { json =>
-          (json \ "@graph").as[List[JsObject]]
-            .find(o => (o \ "@id").as[String] == worldCatId)
-            .flatMap(o => (o \ "exampleOfWork").asOpt[String])
+          (json \ "@graph").asOpt[List[JsObject]] match {
+            case Some(graphNodes) =>
+              graphNodes
+                .find(o => (o \ "@id").as[String] == worldCatId)
+                .flatMap(o => (o \ "exampleOfWork").asOpt[String])
+
+            case None => None
+          }
         }
     }
   }
@@ -46,7 +51,7 @@ object Helper {
       .replaceAllLiterally("""\""", """\\""") // replace \ with \\
       .replaceAll("""[.,-]+$""", "")
 
-    lazy val variantLabels = cleanedLabel #::
+    val variantLabels = cleanedLabel #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "") #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "").replaceAll("""-\d{4}$""", "") #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
@@ -66,7 +71,7 @@ object Helper {
       .mapAsync(1) { query =>
         val req = svc.addQueryParameter("query", query)
 
-        retry.Backoff(max = 10) { () =>
+        retry.Backoff(max = 7) { () =>
           if (logger.isTraceEnabled)
             logger.trace(req.toRequest.getUri.toString)
 
@@ -114,7 +119,7 @@ object Helper {
     Source(csValues)
       .mapAsync(parallelism = 1) { cs =>
         val req = svc.addQueryParameter("q", cs)
-        retry.Backoff(max = 10) { () =>
+        retry.Backoff(max = 7) { () =>
           if (logger.isTraceEnabled)
             logger.trace(req.toRequest.getUri.toString)
 
