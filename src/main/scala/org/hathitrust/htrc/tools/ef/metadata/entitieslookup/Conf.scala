@@ -2,7 +2,7 @@ package org.hathitrust.htrc.tools.ef.metadata.entitieslookup
 
 import java.io.File
 
-import org.rogach.scallop.{Scallop, ScallopConf, ScallopHelpFormatter, ScallopOption, SimpleOption, Subcommand}
+import org.rogach.scallop.{Scallop, ScallopConf, ScallopHelpFormatter, ScallopOption, SimpleOption}
 
 class Conf(args: Seq[String]) extends ScallopConf(args) {
   appendDefaultToDescription = true
@@ -29,38 +29,24 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       version => appVendor.map(
         vendor => s"$name $version\n$vendor"))).getOrElse(Main.appName))
 
-
-  val sparkLog: ScallopOption[String] = opt[String]("spark-log",
-    descr = "Where to write logging output from Spark to",
-    argName = "FILE",
-    noshort = true
-  )
-
-  val logLevel: ScallopOption[String] = opt[String]("log-level",
-    descr = "The application log level; one of INFO, DEBUG, OFF",
-    argName = "LEVEL",
-    default = Some("INFO"),
-    validate = level => Set("INFO", "DEBUG", "OFF").contains(level.toUpperCase)
-  )
-
-  val numPartitions: ScallopOption[Int] = opt[Int]("num-partitions",
-    descr = "The number of partitions to split the input set of HT IDs into, " +
-      "for increased parallelism",
+  val parallelism: ScallopOption[Int] = opt[Int]("parallelism",
+    descr = "The number of parallel connections to make",
     required = false,
+    default = Some(Runtime.getRuntime.availableProcessors()),
     argName = "N",
     validate = 0 <
   )
 
   val outputPath: ScallopOption[File] = opt[File]("output",
-    descr = "Write the output to DIR",
+    descr = "Write the output to FILE",
     required = true,
-    argName = "DIR"
+    argName = "FILE"
   )
 
   val inputPath: ScallopOption[File] = trailArg[File]("input",
     descr = "The path to the folder containing the entities to look up"
   )
 
-  validateFileIsDirectory(inputPath)
+  validateFileIsFile(inputPath)
   verify()
 }

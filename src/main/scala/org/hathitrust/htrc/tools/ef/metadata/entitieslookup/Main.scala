@@ -1,96 +1,81 @@
 package org.hathitrust.htrc.tools.ef.metadata.entitieslookup
 
-import java.util.concurrent.Executors
+import java.nio.file.Paths
+import java.util.concurrent.TimeUnit
 
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import akka.stream.alpakka.csv.scaladsl.CsvParsing
+import akka.stream.scaladsl.FileIO
+import akka.util.ByteString
 import com.gilt.gfc.time.Timer
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
-import org.apache.spark.sql.{Encoder, Encoders, SparkSession}
-import org.apache.spark.{SparkConf, SparkContext}
-import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.Helper._
+import dispatch._
+import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.EntityTypes._
+import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.Helper.lookupEntity
+import org.slf4j.{Logger, LoggerFactory}
+import play.api.libs.json.Json
+import io.netty.util.{HashedWheelTimer, Timer => NettyTimer}
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
+import scala.concurrent.ExecutionContext
 import scala.language.reflectiveCalls
 
 object Main {
-  val appName: String = "bibframe-entities"
+  val appName: String = "entities-lookup"
+  val logger: Logger = LoggerFactory.getLogger(appName)
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
     val inputPath = conf.inputPath().toString
-    val outputPath = conf.outputPath().toString
-    val numPartitions = conf.numPartitions.toOption
+    val outputPath = conf.outputPath()
+    val parallelism = conf.parallelism()
 
-    conf.outputPath().mkdirs()
+    outputPath.getParentFile.mkdirs()
 
-    // set up logging destination
-    conf.sparkLog.foreach(System.setProperty("spark.logFile", _))
-    System.setProperty("logLevel", conf.logLevel().toUpperCase)
-
-    // set up Spark context
-    val sparkConf = new SparkConf()
-    sparkConf.setAppName(appName)
-    sparkConf.setIfMissing("spark.master", "local[*]")
-
-    val spark = SparkSession.builder()
-      .config(sparkConf)
-      .getOrCreate()
-
-    implicit val sc: SparkContext = spark.sparkContext
-    import spark.implicits._
+    implicit val system: ActorSystem = ActorSystem()
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
+    // needed for the future flatMap/onComplete in the end
+    implicit val executionContext: ExecutionContext = system.dispatcher
+    implicit val http: Http = Http.withConfiguration { _
+      .setFollowRedirect(true)
+    }
+    implicit val timer: NettyTimer = new HashedWheelTimer()
 
     logger.info("Starting...")
 
     // record start time
     val t0 = System.nanoTime()
 
-    val entitySchema = List(
-      StructField("type", IntegerType, nullable = false),
-      StructField("label", StringType, nullable = false),
-      StructField("rdftype", StringType, nullable = true),
-      StructField("querytype", StringType, nullable = true)
-    )
-
-    val csvLoader = spark.read.format("csv")
-      .option("header", "false")
-      .schema(StructType(entitySchema))
-
-    implicit val entityEncoder: Encoder[Entity] = Encoders.product[Entity]
-    val entitiesDS = csvLoader.load(inputPath).as[Entity]
-
-    val entityIdsDS = entitiesDS
-      .mapPartitions { entities =>
-        implicit val ec = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
-        val resolvedEntities = Future.traverse(entities)(e => lookupEntity(e).map(e -> _))
-
-        Await.result(resolvedEntities, Duration.Inf)
+    val done = FileIO.fromPath(Paths.get(inputPath))
+      .via(CsvParsing.lineScanner())
+      .map(_.map(_.utf8String))
+      .map(Entity(_))
+      .filterNot {
+        case Entity(WorldCat, url, _, _) if url.startsWith("_") => true
+        case _ => false
       }
+      .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity).map(entity -> _))
       .map {
-        case (e, Right(id)) => e.label -> id
-        case (e, Left(err)) => e.label -> Some(s"ERROR: ${err.getMessage}")
+        case (Entity(t, l, r, _), Right(value)) => EntityResult(t, l, r, value = value)
+        case (Entity(t, l, r, _), Left(e)) => EntityResult(t, l, r, error = Some(e.getMessage))
+      }
+      .map(er => ByteString(Json.toJsObject(er).toString() + "\n"))
+      .runWith(FileIO.toPath(outputPath.toPath))
+
+    done
+      .andThen {
+        case _ => http.shutdown()
+      }
+      .andThen {
+        case _ => system.terminate()
       }
 
-    entityIdsDS.write.format("csv")
-      .option("header", "false")
-      .save(outputPath + "/mapping")
+    system.registerOnTermination {
+      // record elapsed time and report it
+      val t1 = System.nanoTime()
+      val elapsed = t1 - t0
 
-//    if (xmlParseErrorAccumulator.nonEmpty || extractEntitiesErrorAccumulator.nonEmpty)
-//      logger.info("Writing error report(s)...")
-//
-//    // save any errors to the output folder
-//    if (xmlParseErrorAccumulator.nonEmpty)
-//      xmlParseErrorAccumulator.saveErrors(new Path(outputPath, "xmlparse_errors.txt"), _)
-//
-//    if (extractEntitiesErrorAccumulator.nonEmpty)
-//      extractEntitiesErrorAccumulator.saveErrors(new Path(outputPath, "extractentities_errors.txt"), _.toString)
-
-    // record elapsed time and report it
-    val t1 = System.nanoTime()
-    val elapsed = t1 - t0
-
-    logger.info(f"All done in ${Timer.pretty(elapsed)}")
-
-    System.exit(0)
+      logger.info(f"All done in ${Timer.pretty(elapsed)}")
+    }
   }
 
 }

@@ -1,7 +1,10 @@
 package org.hathitrust.htrc.tools.ef.metadata.entitieslookup
 
+import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import dispatch._
+import dispatch.retry.Success._
+import io.netty.util.{Timer => NettyTimer}
 import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.EntityTypes._
 import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.utils.dispatch.response
 import org.slf4j.{Logger, LoggerFactory}
@@ -10,34 +13,33 @@ import play.api.libs.json.JsObject
 import scala.concurrent.ExecutionContext
 
 object Helper {
-  @transient lazy val logger: Logger = LoggerFactory.getLogger(Main.appName)
+  val logger: Logger = LoggerFactory.getLogger(Main.appName)
 
   private val VIAF_SEARCH_URL: String = "http://www.viaf.org/viaf/AutoSuggest"
   private val LOC_SEARCH_URL: String = "http://id.loc.gov/search/"
 
-  val http: Http = Http.withConfiguration { _
-    .setFollowRedirect(true)
+
+  def lookupWorldCat(worldCatId: String)
+                    (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
+    val req = url(s"$worldCatId.jsonld")
+
+    retry.Backoff(max = 10) { () =>
+      if (logger.isTraceEnabled)
+        logger.trace(req.toRequest.getUri.toString)
+
+      http(req OK response.as.Json)
+        .either
+        .right
+        .map { json =>
+          (json \ "@graph").as[List[JsObject]]
+            .find(o => (o \ "@id").as[String] == worldCatId)
+            .flatMap(o => (o \ "exampleOfWork").asOpt[String])
+        }
+    }
   }
 
-  sys.addShutdownHook {
-    println("Helper shutdown hook invoked")
-    http.shutdown()
-  }
-
-  def lookupWorldCat(worldCatId: String)(implicit ec: ExecutionContext): Future[Either[Throwable, Option[String]]] = {
-    http(url(s"$worldCatId.jsonld") OK response.as.Json)
-      .either
-      .right
-      .map { json =>
-        (json \ "@graph").as[List[JsObject]]
-          .find(o => (o \ "@id").as[String] == worldCatId)
-          .flatMap(o => (o \ "exampleOfWork").asOpt[String])
-      }
-  }
-
-  def lookupViaf(label: String, queryType: String)(implicit ec: ExecutionContext): Future[Either[Throwable, Option[String]]] = {
-    import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.utils.akka.SparkActorSystem._
-
+  def lookupViaf(label: String, queryType: String)
+                (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val cleanedLabel = label
       .trim
       .replaceAllLiterally(""""""", """'""")  // replace double quotation marks with single quotation marks
@@ -62,29 +64,37 @@ object Helper {
 
     Source(variantLabels)
       .mapAsync(1) { query =>
-        http(svc.addQueryParameter("query", query) OK response.as.Json)
-          .either
-          .right
-          .map { json =>
+        val req = svc.addQueryParameter("query", query)
+
+        retry.Backoff(max = 10) { () =>
+          if (logger.isTraceEnabled)
+            logger.trace(req.toRequest.getUri.toString)
+
+          http(req OK response.as.Json)
+            .either
+            .right
+            .map { json =>
               val results = (json \ "result").asOpt[List[JsObject]]
               results
                 .flatMap(_.find(o => (o \ "nametype").as[String] == queryType && (o \ "viafid").isDefined))
                 .map(o => (o \ "viafid").as[String])
-          }
+            }
+        }
       }
       .collect {
         case r @ Right(Some(_)) => r
         case l @ Left(_) => l
       }
       .take(1)
-      .runWith(Sink.headOption)(materializer)
+      .runWith(Sink.headOption)
       .map {
         case Some(result) => result
         case None => Right(None)
       }
   }
 
-  def lookupLoc(label: String, rdfType: String, queryType: String)(implicit ec: ExecutionContext): Future[Either[Throwable, Option[String]]] = {
+  def lookupLoc(label: String, rdfType: String, queryType: String)
+               (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val cleanedLabel = label
       .trim
       .replaceAllLiterally(""""""", """\"""")
@@ -92,26 +102,54 @@ object Helper {
 
     val svc = url(LOC_SEARCH_URL) <<? List(
       "q" -> s"""aLabel:"$cleanedLabel"""",
-      "q" -> s"cs:http://id.loc.gov/authorities/$queryType",
       "q" -> s"rdftype:$rdfType",
       "format" -> "atom"
     )
 
-    http(svc OK dispatch.as.xml.Elem)
-      .either
-      .right
-      .map { xml =>
-          (xml \ "feed" \ "entry")
-            .headOption
-            .map(entry => (entry \ "id").text.replaceFirst("""^info:lc""", "http://id.loc.gov"))
+    val csValues = List(
+      s"cs:http://id.loc.gov/authorities/$queryType",
+      "cs:http://id.loc.gov/vocabulary/geographicAreas",
+    )
+
+    Source(csValues)
+      .mapAsync(parallelism = 1) { cs =>
+        val req = svc.addQueryParameter("q", cs)
+        retry.Backoff(max = 10) { () =>
+          if (logger.isTraceEnabled)
+            logger.trace(req.toRequest.getUri.toString)
+
+          http(req OK dispatch.as.xml.Elem)
+            .either
+            .right
+            .map { xml =>
+              (xml \ "entry")
+                .headOption
+                .map(entry => (entry \ "id").text.replaceFirst("""^info:lc""", "http://id.loc.gov"))
+            }
+        }
+      }
+      .collect {
+        case r @ Right(Some(_)) => r
+        case l @ Left(_) => l
+      }
+      .take(1)
+      .runWith(Sink.headOption)
+      .map {
+        case Some(result) => result
+        case None => Right(None)
       }
   }
 
-  def lookupEntity(entity: Entity)(implicit ec: ExecutionContext): Future[Either[Throwable, Option[String]]] = entity match {
-    case Entity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
-    case Entity(Viaf, label, _, queryType) => lookupViaf(label, queryType)
-    case Entity(Loc, label, rdfType, queryType) => lookupLoc(label, rdfType, queryType)
-    case _ => throw new IllegalArgumentException("entity")
+  def lookupEntity(entity: Entity)
+                  (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
+    logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
+
+    entity match {
+      case Entity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
+      case Entity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
+      case Entity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
+      case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))
+    }
   }
 
 }
