@@ -4,7 +4,6 @@ import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{FileIO, JsonFraming}
 import akka.util.ByteString
 import com.gilt.gfc.time.Timer
@@ -29,14 +28,14 @@ object Main {
     val outputPath = conf.outputPath()
     val parallelism = conf.parallelism()
 
-    outputPath.getParentFile.mkdirs()
+    Option(outputPath.getParentFile).foreach(_.mkdirs())
 
     implicit val system: ActorSystem = ActorSystem()
-    implicit val materializer: ActorMaterializer = ActorMaterializer()
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContext = system.dispatcher
     implicit val http: Http = Http.withConfiguration { _
       .setFollowRedirect(true)
+      .setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:72.0) Gecko/20100101 Firefox/72.0")
     }
     implicit val timer: NettyTimer = new HashedWheelTimer(100, TimeUnit.MILLISECONDS, 8192)
 
@@ -49,7 +48,7 @@ object Main {
       .via(JsonFraming.objectScanner(Int.MaxValue))
       .map(_.utf8String)
       .map { s =>
-        val entityTry = Try(Json.parse(s).as[Entity])
+        val entityTry = Try(Json.parse(s).as[RawEntity])
         entityTry match {
           case Failure(e) => logger.error(s, e)
           case _ =>
@@ -60,13 +59,13 @@ object Main {
         case Success(entity) => entity
       }
       .filterNot {
-        case Entity(WorldCat, url, _, _) if url.startsWith("_") => true
+        case RawEntity(WorldCat, url, _, _) if url.startsWith("_") => true
         case _ => false
       }
       .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity).map(entity -> _))
       .map {
-        case (Entity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
-        case (Entity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
+        case (RawEntity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
+        case (RawEntity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
       }
       .map(er => ByteString(Json.toJsObject(er).toString() + "\n"))
       .runWith(FileIO.toPath(outputPath.toPath))

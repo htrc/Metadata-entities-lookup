@@ -23,7 +23,7 @@ object Helper {
                     (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val req = url(s"$worldCatId.jsonld")
 
-    retry.Backoff(max = 7) { () =>
+    retry.Backoff(max = 2) { () =>
       if (logger.isTraceEnabled)
         logger.trace(req.toRequest.getUri.toString)
 
@@ -71,7 +71,7 @@ object Helper {
       .mapAsync(1) { query =>
         val req = svc.addQueryParameter("query", query)
 
-        retry.Backoff(max = 7) { () =>
+        retry.Backoff(max = 2) { () =>
           if (logger.isTraceEnabled)
             logger.trace(req.toRequest.getUri.toString)
 
@@ -119,7 +119,7 @@ object Helper {
     Source(csValues)
       .mapAsync(parallelism = 1) { cs =>
         val req = svc.addQueryParameter("q", cs)
-        retry.Backoff(max = 7) { () =>
+        retry.Backoff(max = 2) { () =>
           if (logger.isTraceEnabled)
             logger.trace(req.toRequest.getUri.toString)
 
@@ -145,14 +145,14 @@ object Helper {
       }
   }
 
-  def lookupEntity(entity: Entity)
+  def lookupEntity(entity: RawEntity)
                   (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
 
     entity match {
-      case Entity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
-      case Entity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
-      case Entity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
+      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
+      case RawEntity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
+      case RawEntity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
       case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))
     }
   }

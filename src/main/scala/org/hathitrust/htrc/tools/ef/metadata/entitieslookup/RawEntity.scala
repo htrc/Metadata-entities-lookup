@@ -6,4 +6,4 @@ object EntityTypes {
   val Loc = 3
 }
 
-final case class Entity(`type`: Int, label: String, rdfType: Option[String], queryType: Option[String])
+final case class RawEntity(`type`: Int, label: String, rdfType: Option[String], queryType: Option[String])
