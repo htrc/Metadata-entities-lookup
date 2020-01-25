@@ -37,7 +37,7 @@ lazy val ammoniteSettings = Seq(
     {
       val version = scalaBinaryVersion.value match {
         case "2.10" => "1.0.3"
-        case _ ⇒ "1.7.4"
+        case _ => "2.0.4"
       }
       "com.lihaoyi" % "ammonite" % version % Test cross CrossVersion.full
     },
@@ -58,15 +58,15 @@ lazy val `entities-lookup` = (project in file("."))
     description := "Used to perform lookup (resolve) entities via external sources like VIAF, LOC, and WorldCat",
     licenses += "Apache2" -> url("http://www.apache.org/licenses/LICENSE-2.0"),
     libraryDependencies ++= Seq(
-      "org.rogach"                    %% "scallop"                  % "3.3.1",
-      "org.hathitrust.htrc"           %% "scala-utils"              % "2.8-3-g437cdc0",
-      "org.dispatchhttp"              %% "dispatch-core"            % "1.1.0",
-      "com.typesafe.play"             %% "play-json"                % "2.7.3",
-      "com.typesafe.akka"             %% "akka-stream"              % "2.5.25",
-      "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "1.1.1",
+      "org.rogach"                    %% "scallop"                  % "3.3.2",
+      "org.hathitrust.htrc"           %% "scala-utils"              % "2.10.1",
+      "org.dispatchhttp"              %% "dispatch-core"            % "1.2.0",
+      "com.typesafe.play"             %% "play-json"                % "2.8.1",
+      "com.typesafe.akka"             %% "akka-stream"              % "2.6.1",
+      "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "1.1.2",
       "com.gilt"                      %% "gfc-time"                 % "0.0.7",
       "ch.qos.logback"                %  "logback-classic"          % "1.2.3",
-      "org.scalacheck"                %% "scalacheck"               % "1.14.0"      % Test,
-      "org.scalatest"                 %% "scalatest"                % "3.0.8"       % Test
+      "org.scalacheck"                %% "scalacheck"               % "1.14.3"      % Test,
+      "org.scalatest"                 %% "scalatest"                % "3.1.0"       % Test
     )
   )
