@@ -23,7 +23,7 @@ object Main {
   val logger: Logger = LoggerFactory.getLogger(appName)
 
   def main(args: Array[String]): Unit = {
-    val conf = new Conf(args)
+    val conf = new Conf(args.toIndexedSeq)
     val inputPath = conf.inputPath().toString
     val outputPath = conf.outputPath()
     val parallelism = conf.parallelism()
