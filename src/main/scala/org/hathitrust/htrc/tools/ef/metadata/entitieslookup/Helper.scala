@@ -17,8 +17,39 @@ object Helper {
 
   private val VIAF_SEARCH_URL: String = "http://www.viaf.org/viaf/AutoSuggest"
   private val LOC_SEARCH_URL: String = "http://id.loc.gov/search/"
+  private val WORLDCAT_SEARCH_API_URL: String = "https://americas.discovery.api.oclc.org/worldcat/search/v2"
+  private val OCLC_TOKEN_URL: String = "https://oauth.oclc.org/token"
+  private val WORK_URL_BASE: String = "http://worldcat.org/entity/work/id/"
 
 
+  def authOclc()(implicit http: Http, ec: ExecutionContext): Future[Token] = {
+    val oclc_creds = sys.env("OCLC_CREDS")
+    val req = url(OCLC_TOKEN_URL).setHeader(
+      "Authorization", s"Basic $oclc_creds"
+    ) << Map("grant_type" -> "client_credentials", "scope" -> "wcapi")
+
+    http(req OK response.as.Json).map(_.as[Token])
+  }
+
+  def lookupWorldCatApi(worldCatId: String, token: Token)
+                       (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
+    val oclcId = worldCatId.substring(worldCatId.lastIndexOf("/") + 1)
+
+    val req = (url(WORLDCAT_SEARCH_API_URL) / "bibs" / oclcId)
+      .setHeader("Authorization", s"${token.token_type.capitalize} ${token.access_token}")
+
+    retry.Backoff(max = 2) { () =>
+      if (logger.isTraceEnabled)
+        logger.trace(req.toRequest.getUri.toString)
+
+      http(req OK response.as.Json)
+        .either
+        .right
+        .map { json => (json \ "work" \ "id").asOpt[String].map(WORK_URL_BASE + _) }
+    }
+  }
+
+  @deprecated("Use lookupWorldCatApi instead")
   def lookupWorldCat(worldCatId: String)
                     (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val req = url(s"$worldCatId.jsonld")
@@ -47,23 +78,23 @@ object Helper {
                 (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val cleanedLabel = label
       .trim
-      .replaceAllLiterally(""""""", """'""")  // replace double quotation marks with single quotation marks
-      .replaceAllLiterally("""\""", """\\""") // replace \ with \\
+      .replace(""""""", """'""")  // replace double quotation marks with single quotation marks
+      .replace("""\""", """\\""") // replace \ with \\
       .replaceAll("""[.,-]+$""", "")
 
     val variantLabels = cleanedLabel #::
-      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "") #::
-      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "").replaceAll("""-\d{4}$""", "") #::
-      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAllLiterally("?", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
+      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replace("?", "") #::
+      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replace("?", "").replaceAll("""-\d{4}$""", "") #::
+      cleanedLabel.replaceAll(""" \([^)]+\)""", "").replace("?", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAll("""-\d{4}$""", "") #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
       cleanedLabel.replaceAll(""" \([^)]+\)""", "") #::
-      cleanedLabel.replaceAllLiterally("?", "").replaceAll("""-\d{4}$""", "") #::
-      cleanedLabel.replaceAllLiterally("?", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
+      cleanedLabel.replace("?", "").replaceAll("""-\d{4}$""", "") #::
+      cleanedLabel.replace("?", "").replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
       cleanedLabel.replaceAll("""-\d{4}$""", "") #::
       cleanedLabel.replaceAll(""", (?:\d{4}-)?\d{4}$""", "") #::
-      cleanedLabel.replaceAllLiterally("?", "") #::
-      Stream.empty[String]
+      cleanedLabel.replace("?", "") #::
+      LazyList.empty[String]
 
     val svc = url(VIAF_SEARCH_URL)
 
@@ -102,7 +133,7 @@ object Helper {
                (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val cleanedLabel = label
       .trim
-      .replaceAllLiterally(""""""", """\"""")
+      .replace(""""""", """\"""")
       .replaceAll("""[.,-]+$""", "")
 
     val svc = url(LOC_SEARCH_URL) <<? List(
@@ -145,12 +176,12 @@ object Helper {
       }
   }
 
-  def lookupEntity(entity: RawEntity)
+  def lookupEntity(entity: RawEntity, token: Token)
                   (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
 
     entity match {
-      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
+      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCatApi(worldCatId, token)
       case RawEntity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
       case RawEntity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
       case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))

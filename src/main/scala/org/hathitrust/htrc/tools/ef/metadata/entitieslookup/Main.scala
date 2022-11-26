@@ -2,14 +2,13 @@ package org.hathitrust.htrc.tools.ef.metadata.entitieslookup
 
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
-
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{FileIO, JsonFraming}
 import akka.util.ByteString
 import com.gilt.gfc.time.Timer
 import dispatch._
 import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.EntityTypes._
-import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.Helper.lookupEntity
+import org.hathitrust.htrc.tools.ef.metadata.entitieslookup.Helper.{authOclc, lookupEntity}
 import org.slf4j.{Logger, LoggerFactory}
 import play.api.libs.json.Json
 import io.netty.util.{HashedWheelTimer, Timer => NettyTimer}
@@ -44,46 +43,50 @@ object Main {
     // record start time
     val t0 = System.nanoTime()
 
-    val done = FileIO.fromPath(Paths.get(inputPath))
-      .via(JsonFraming.objectScanner(Int.MaxValue))
-      .map(_.utf8String)
-      .map { s =>
-        val entityTry = Try(Json.parse(s).as[RawEntity])
-        entityTry match {
-          case Failure(e) => logger.error(s, e)
-          case _ =>
+    for (token <- authOclc()) {
+      logger.info(s"Authenticated to OCLC - token expires in ${Timer.pretty(token.expires_in*(1e9.toLong))}")
+      val done = FileIO.fromPath(Paths.get(inputPath))
+        .via(JsonFraming.objectScanner(Int.MaxValue))
+        .map(_.utf8String)
+        .map { s =>
+          val entityTry = Try(Json.parse(s).as[RawEntity])
+          entityTry match {
+            case Failure(e) => logger.error(s, e)
+            case _ =>
+          }
+          entityTry
         }
-        entityTry
-      }
-      .collect {
-        case Success(entity) => entity
-      }
-      .filterNot {
-        case RawEntity(WorldCat, url, _, _) if url.startsWith("_") => true
-        case _ => false
-      }
-      .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity).map(entity -> _))
-      .map {
-        case (RawEntity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
-        case (RawEntity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
-      }
-      .map(er => ByteString(Json.toJsObject(er).toString() + "\n"))
-      .runWith(FileIO.toPath(outputPath.toPath))
+        .collect {
+          case Success(entity) => entity
+        }
+        .filterNot {
+          case RawEntity(WorldCat, url, _, _) if url.startsWith("_") => true
+          case _ => false
+        }
+        .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity, token).map(entity -> _))
+        .map {
+          case (RawEntity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
+          case (RawEntity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
+        }
+        .map(er => ByteString(Json.toJsObject(er).toString() + "\n"))
+        .runWith(FileIO.toPath(outputPath.toPath))
 
-    done
-      .andThen {
-        case _ => http.shutdown()
-      }
-      .andThen {
-        case _ => system.terminate()
-      }
+      done
+        .andThen {
+          case _ => http.shutdown()
+        }
+        .andThen {
+          case _ => system.terminate()
+        }
 
-    system.registerOnTermination {
-      // record elapsed time and report it
-      val t1 = System.nanoTime()
-      val elapsed = t1 - t0
+      system.registerOnTermination {
+        // record elapsed time and report it
+        val t1 = System.nanoTime()
+        val elapsed = t1 - t0
 
-      logger.info(f"All done in ${Timer.pretty(elapsed)}")
+        logger.info(f"All done in ${Timer.pretty(elapsed)}")
+        System.exit(0)
+      }
     }
   }
 

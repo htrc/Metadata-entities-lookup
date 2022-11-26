@@ -7,4 +7,6 @@ package object entitieslookup {
   implicit val entityReads: Reads[RawEntity] = Json.reads[RawEntity]
   implicit val entityResultWrites: OWrites[EntityResult] = Json.writes[EntityResult]
 
+  implicit val tokenReads: Reads[Token] = Json.reads[Token]
+
 }
