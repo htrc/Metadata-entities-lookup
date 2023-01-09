@@ -63,6 +63,6 @@ lazy val `entities-lookup` = (project in file("."))
       "com.github.nscala-time"        %% "nscala-time"              % "2.32.0",
       "ch.qos.logback"                %  "logback-classic"          % "1.4.5",
       "org.scalacheck"                %% "scalacheck"               % "1.17.0"      % Test,
-      "org.scalatest"                 %% "scalatest"                % "3.2.14"       % Test
+      "org.scalatest"                 %% "scalatest"                % "3.2.15"      % Test
     )
   )
