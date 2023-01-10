@@ -37,6 +37,12 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     validate = 0 <
   )
 
+  val entityCacheFile: ScallopOption[File] = opt[File]("cache",
+    descr = "Entity value cache file",
+    required = false,
+    argName = "FILE"
+  )
+
   val outputPath: ScallopOption[File] = opt[File]("output",
     descr = "Write the output to FILE",
     required = true,
@@ -48,5 +54,6 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   )
 
   validateFileIsFile(inputPath)
+  validateFileExists(entityCacheFile)
   verify()
 }

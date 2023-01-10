@@ -14,8 +14,9 @@ import play.api.libs.json.Json
 import io.netty.util.{HashedWheelTimer, Timer => NettyTimer}
 
 import scala.concurrent.ExecutionContext
+import scala.io.Source
 import scala.language.reflectiveCalls
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, Using}
 
 object Main {
   val appName: String = "entities-lookup"
@@ -26,6 +27,9 @@ object Main {
     val inputPath = conf.inputPath().toString
     val outputPath = conf.outputPath()
     val parallelism = conf.parallelism()
+    val entityCache = conf.entityCacheFile.map(EntityCache.fromFile).getOrElse(EntityCache.empty)
+
+    logger.info(f"Loaded ${entityCache.size}%,d resolved entities into cache")
 
     Option(outputPath.getParentFile).foreach(_.mkdirs())
 
@@ -63,7 +67,12 @@ object Main {
           case RawEntity(WorldCat, url, _, _) if url.startsWith("_") => true
           case _ => false
         }
-        .mapAsyncUnordered(parallelism)(entity => lookupEntity(entity, token).map(entity -> _))
+        .mapAsyncUnordered(parallelism) { entity =>
+          entityCache.get(entity)
+            .map(entity -> Right(_))
+            .map(Future.successful)
+            .getOrElse(lookupEntity(entity, token).map(entity -> _))
+        }
         .map {
           case (RawEntity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)
           case (RawEntity(t, l, r, q), Left(e)) => EntityResult(t, l, r, q, error = Some(e.getMessage))
@@ -85,6 +94,10 @@ object Main {
         val elapsed = t1 - t0
 
         logger.info(f"All done in ${Timer.pretty(elapsed)}")
+        val totalCacheAccesses = entityCache.cacheHits + entityCache.cacheMisses
+        val percHits = entityCache.cacheHits * 100 / totalCacheAccesses
+        val percMisses = 100 - percHits
+        logger.info(f"Cache stats - hits: ${entityCache.cacheHits}%,d ($percHits%%), misses: ${entityCache.cacheMisses}%,d ($percMisses%%)")
         System.exit(0)
       }
     }

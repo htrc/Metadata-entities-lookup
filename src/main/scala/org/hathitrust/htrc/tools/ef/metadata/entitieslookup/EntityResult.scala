@@ -5,4 +5,6 @@ final case class EntityResult(`type`: Int,
                               rdfType: Option[String],
                               queryType: Option[String],
                               value: Option[String] = None,
-                              error: Option[String] = None)
+                              error: Option[String] = None) {
+  def entity: RawEntity = RawEntity(`type`, label, rdfType, queryType)
+}
