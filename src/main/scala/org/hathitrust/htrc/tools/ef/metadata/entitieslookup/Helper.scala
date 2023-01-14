@@ -181,7 +181,9 @@ object Helper {
     logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
 
     entity match {
-      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCatApi(worldCatId, token)
+      // TODO: Using the old way to look up work ids at OCLC - for an alternative API, uncomment next line instead
+//      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCatApi(worldCatId, token)
+      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
       case RawEntity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
       case RawEntity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
       case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))
