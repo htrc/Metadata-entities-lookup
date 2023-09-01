@@ -1,12 +1,10 @@
 showCurrentGitBranch
 
-git.useGitDescribe := true
-
-lazy val commonSettings = Seq(
+inThisBuild(Seq(
   organization := "org.hathitrust.htrc",
   organizationName := "HathiTrust Research Center",
   organizationHomepage := Some(url("https://www.hathitrust.org/htrc")),
-  scalaVersion := "2.13.10",
+  scalaVersion := "2.13.11",
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -24,21 +22,29 @@ lazy val commonSettings = Seq(
     ("Git-Version", git.gitDescribedVersion.value.getOrElse("N/A")),
     ("Git-Dirty", git.gitUncommittedChanges.value.toString),
     ("Build-Date", new java.util.Date().toString)
+  ),
+  versionScheme := Some("semver-spec"),
+  credentials += Credentials(
+    "Sonatype Nexus Repository Manager", // realm
+    "nexus.htrc.illinois.edu", // host
+    "drhtrc", // user
+    sys.env.getOrElse("HTRC_NEXUS_DRHTRC_PWD", "abc123") // password
   )
-)
+))
 
 lazy val ammoniteSettings = Seq(
   libraryDependencies +=
     {
       val version = scalaBinaryVersion.value match {
         case "2.10" => "1.0.3"
-        case _ ⇒  "2.5.5"
+        case "2.11" => "1.6.7"
+        case _ ⇒  "2.5.9"
       }
       "com.lihaoyi" % "ammonite" % version % Test cross CrossVersion.full
     },
   Test / sourceGenerators += Def.task {
     val file = (Test / sourceManaged).value / "amm.scala"
-    IO.write(file, """object amm extends App { ammonite.Main.main(args) }""")
+    IO.write(file, """object amm extends App { ammonite.AmmoniteMain.main(args) }""")
     Seq(file)
   }.taskValue,
   connectInput := true,
@@ -47,22 +53,21 @@ lazy val ammoniteSettings = Seq(
 
 lazy val `entities-lookup` = (project in file("."))
   .enablePlugins(GitVersioning, GitBranchPrompt, JavaAppPackaging)
-  .settings(commonSettings)
   .settings(ammoniteSettings)
   .settings(
     name := "entities-lookup",
     description := "Used to perform lookup (resolve) entities via external sources like VIAF, LOC, and WorldCat",
     licenses += "Apache2" -> url("http://www.apache.org/licenses/LICENSE-2.0"),
     libraryDependencies ++= Seq(
-      "org.rogach"                    %% "scallop"                  % "4.1.0",
-      "org.hathitrust.htrc"           %% "scala-utils"              % "2.13",
+      "org.rogach"                    %% "scallop"                  % "5.0.0",
+      "org.hathitrust.htrc"           %% "scala-utils"              % "2.14.4",
       "org.dispatchhttp"              %% "dispatch-core"            % "1.2.0",
-      "com.typesafe.play"             %% "play-json"                % "2.9.3",
-      "com.typesafe.akka"             %% "akka-stream"              % "2.7.0",
-      "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "5.0.0",
+      "com.typesafe.play"             %% "play-json"                % "2.9.4",
+      "com.typesafe.akka"             %% "akka-stream"              % "2.8.4",
+      "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "6.0.2",
       "com.github.nscala-time"        %% "nscala-time"              % "2.32.0",
-      "ch.qos.logback"                %  "logback-classic"          % "1.4.5",
+      "ch.qos.logback"                %  "logback-classic"          % "1.4.11",
       "org.scalacheck"                %% "scalacheck"               % "1.17.0"      % Test,
-      "org.scalatest"                 %% "scalatest"                % "3.2.15"      % Test
+      "org.scalatest"                 %% "scalatest"                % "3.2.16"      % Test
     )
   )
