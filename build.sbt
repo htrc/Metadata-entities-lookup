@@ -61,7 +61,8 @@ lazy val `entities-lookup` = (project in file("."))
     libraryDependencies ++= Seq(
       "org.rogach"                    %% "scallop"                  % "5.0.0",
       "org.hathitrust.htrc"           %% "scala-utils"              % "2.14.4",
-      "org.dispatchhttp"              %% "dispatch-core"            % "1.2.0",
+      "org.dispatchhttp"              %% "dispatch-core"            % "1.2.0"
+        exclude("org.scala-lang.modules", "scala-xml"),
       "com.typesafe.play"             %% "play-json"                % "2.9.4",
       "com.typesafe.akka"             %% "akka-stream"              % "2.8.4",
       "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "6.0.2",
