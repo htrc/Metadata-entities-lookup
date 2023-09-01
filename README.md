@@ -1,5 +1,5 @@
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/htrc/Metadata-entities-lookup/ci.yml?branch=main)](https://github.com/htrc/Metadata-entities-lookup/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/github/htrc/Metadata-bibframe-entities/graph/badge.svg?token=2y6GAtWfnP)](https://codecov.io/github/htrc/Metadata-bibframe-entities)
+[![codecov](https://codecov.io/github/htrc/Metadata-entities-lookup/graph/badge.svg?token=dqOVWCi4GH)](https://codecov.io/github/htrc/Metadata-entities-lookup)
 [![GitHub release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/htrc/Metadata-entities-lookup?include_prereleases&sort=semver)](https://github.com/htrc/Metadata-entities-lookup/releases/latest)
 
 # Metadata-entities-lookup

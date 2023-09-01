@@ -32,6 +32,7 @@ object Helper {
         ) << Map("grant_type" -> "client_credentials", "scope" -> "wcapi")
 
         http(req OK response.as.Json).map(_.as[Token]).map(Some(_)) transform {
+          case s @ Success(_) => s
           case Failure(e) =>
             logger.error("Error authenticating to OCLC - will attempt to use old API instead", e)
             Success(None)
