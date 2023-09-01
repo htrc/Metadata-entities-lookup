@@ -47,8 +47,8 @@ object Main {
     // record start time
     val t0 = System.nanoTime()
 
-    for (token <- authOclc()) {
-      logger.info(s"Authenticated to OCLC - token expires in ${Timer.pretty(token.expires_in*(1e9.toLong))}")
+    for (tokenOpt <- authOclc()) {
+      tokenOpt.foreach(token => logger.info(s"Authenticated to OCLC - token expires in ${Timer.pretty(token.expires_in*(1e9.toLong))}"))
       val done = FileIO.fromPath(Paths.get(inputPath))
         .via(JsonFraming.objectScanner(Int.MaxValue))
         .map(_.utf8String)
@@ -71,7 +71,7 @@ object Main {
           entityCache.get(entity)
             .map(entity -> Right(_))
             .map(Future.successful)
-            .getOrElse(lookupEntity(entity, token).map(entity -> _))
+            .getOrElse(lookupEntity(entity, tokenOpt).map(entity -> _))
         }
         .map {
           case (RawEntity(t, l, r, q), Right(value)) => EntityResult(t, l, r, q, value = value)

@@ -11,6 +11,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import play.api.libs.json.JsObject
 
 import scala.concurrent.ExecutionContext
+import scala.util.{Failure, Success}
 
 object Helper {
   val logger: Logger = LoggerFactory.getLogger(Main.appName)
@@ -22,13 +23,22 @@ object Helper {
   private val WORK_URL_BASE: String = "http://worldcat.org/entity/work/id/"
 
 
-  def authOclc()(implicit http: Http, ec: ExecutionContext): Future[Token] = {
-    val oclc_creds = sys.env("OCLC_CREDS")
-    val req = url(OCLC_TOKEN_URL).setHeader(
-      "Authorization", s"Basic $oclc_creds"
-    ) << Map("grant_type" -> "client_credentials", "scope" -> "wcapi")
+  def authOclc()(implicit http: Http, ec: ExecutionContext): Future[Option[Token]] = {
+    val oclc_creds = sys.env.get("OCLC_CREDS")
+    oclc_creds match {
+      case Some(creds) =>
+        val req = url(OCLC_TOKEN_URL).setHeader(
+          "Authorization", s"Basic $creds"
+        ) << Map("grant_type" -> "client_credentials", "scope" -> "wcapi")
 
-    http(req OK response.as.Json).map(_.as[Token])
+        http(req OK response.as.Json).map(_.as[Token]).map(Some(_)) transform {
+          case Failure(e) =>
+            logger.error("Error authenticating to OCLC - will attempt to use old API instead", e)
+            Success(None)
+        }
+
+      case None => Future.successful(None)
+    }
   }
 
   def lookupWorldCatApi(worldCatId: String, token: Token)
@@ -49,7 +59,6 @@ object Helper {
     }
   }
 
-  @deprecated("Use lookupWorldCatApi instead")
   def lookupWorldCat(worldCatId: String)
                     (implicit http: Http, ec: ExecutionContext, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     val req = url(s"$worldCatId.jsonld")
@@ -176,16 +185,15 @@ object Helper {
       }
   }
 
-  def lookupEntity(entity: RawEntity, token: Token)
+  def lookupEntity(entity: RawEntity, tokenOpt: Option[Token])
                   (implicit http: Http, ec: ExecutionContext, mat: Materializer, timer: NettyTimer): Future[Either[Throwable, Option[String]]] = {
     logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
 
-    entity match {
-      // TODO: Using the old way to look up work ids at OCLC - for an alternative API, uncomment next line instead
-//      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCatApi(worldCatId, token)
-      case RawEntity(WorldCat, worldCatId, _, _) => lookupWorldCat(worldCatId)
-      case RawEntity(Viaf, label, _, Some(queryType)) => lookupViaf(label, queryType)
-      case RawEntity(Loc, label, Some(rdfType), Some(queryType)) => lookupLoc(label, rdfType, queryType)
+    entity -> tokenOpt match {
+      case (RawEntity(WorldCat, worldCatId, _, _), Some(token)) => lookupWorldCatApi(worldCatId, token)
+      case (RawEntity(WorldCat, worldCatId, _, _), None) => lookupWorldCat(worldCatId)
+      case (RawEntity(Viaf, label, _, Some(queryType)), _) => lookupViaf(label, queryType)
+      case (RawEntity(Loc, label, Some(rdfType), Some(queryType)), _) => lookupLoc(label, rdfType, queryType)
       case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))
     }
   }
