@@ -1,12 +1,10 @@
-import sbt.util
-
 showCurrentGitBranch
 
 inThisBuild(Seq(
   organization := "org.hathitrust.htrc",
   organizationName := "HathiTrust Research Center",
   organizationHomepage := Some(url("https://www.hathitrust.org/htrc")),
-  scalaVersion := "2.13.11",
+  scalaVersion := "2.13.14",
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -40,7 +38,7 @@ lazy val ammoniteSettings = Seq(
       val version = scalaBinaryVersion.value match {
         case "2.10" => "1.0.3"
         case "2.11" => "1.6.7"
-        case _ ⇒  "2.5.9"
+        case _ ⇒  "3.0.0-M1-24-26133e66"
       }
       "com.lihaoyi" % "ammonite" % version % Test cross CrossVersion.full
     },
@@ -61,16 +59,16 @@ lazy val `entities-lookup` = (project in file("."))
     description := "Used to perform lookup (resolve) entities via external sources like VIAF, LOC, and WorldCat",
     licenses += "Apache2" -> url("http://www.apache.org/licenses/LICENSE-2.0"),
     libraryDependencies ++= Seq(
-      "org.rogach"                    %% "scallop"                  % "5.0.0",
+      "org.rogach"                    %% "scallop"                  % "5.1.0",
       "org.hathitrust.htrc"           %% "scala-utils"              % "2.14.4",
       "org.dispatchhttp"              %% "dispatch-core"            % "1.2.0",
-      "com.typesafe.play"             %% "play-json"                % "2.9.4",
-      "com.typesafe.akka"             %% "akka-stream"              % "2.8.4",
+      "com.typesafe.play"             %% "play-json"                % "2.10.5",
+      "com.typesafe.akka"             %% "akka-stream"              % "2.8.5",
       "com.lightbend.akka"            %% "akka-stream-alpakka-json-streaming" % "6.0.2",
       "com.github.nscala-time"        %% "nscala-time"              % "2.32.0",
-      "ch.qos.logback"                %  "logback-classic"          % "1.4.11",
-      "org.scalacheck"                %% "scalacheck"               % "1.17.0"      % Test,
-      "org.scalatest"                 %% "scalatest"                % "3.2.16"      % Test
+      "ch.qos.logback"                %  "logback-classic"          % "1.5.6",
+      "org.scalacheck"                %% "scalacheck"               % "1.18.0"      % Test,
+      "org.scalatest"                 %% "scalatest"                % "3.2.18"      % Test
     ),
     evictionErrorLevel := Level.Warn
   )
