@@ -191,8 +191,8 @@ object Helper {
     logger.debug("{}: Looking up {}", Thread.currentThread().getId, entity)
 
     entity -> tokenOpt match {
-      case (RawEntity(WorldCat, worldCatId, _, _), Some(token)) => lookupWorldCatApi(worldCatId, token)
-      case (RawEntity(WorldCat, worldCatId, _, _), None) => lookupWorldCat(worldCatId)
+//      case (RawEntity(WorldCat, worldCatId, _, _), Some(token)) => lookupWorldCatApi(worldCatId, token)
+//      case (RawEntity(WorldCat, worldCatId, _, _), None) => lookupWorldCat(worldCatId)
       case (RawEntity(Viaf, label, _, Some(queryType)), _) => lookupViaf(label, queryType)
       case (RawEntity(Loc, label, Some(rdfType), Some(queryType)), _) => lookupLoc(label, rdfType, queryType)
       case _ => Future.successful(Left(new IllegalArgumentException("Invalid entity")))
